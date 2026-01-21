@@ -11,6 +11,7 @@
   import SMeter from './components/SMeter.svelte';
   import ControlPanel from './components/ControlPanel.svelte';
   import ControlSheet from './components/ControlSheet.svelte';
+  import FrequencyScale from './components/FrequencyScale.svelte';
 
   let waterfall;
   let isMobile = false;
@@ -96,10 +97,7 @@
   <div class="content">
     <div class="waterfall-section">
       <Waterfall bind:this={waterfall} width={1024} height={isMobile ? 300 : 200} />
-
-      <div class="freq-scale">
-        <!-- Frequency scale would go here -->
-      </div>
+      <FrequencyScale minFreq={14000} maxFreq={14350} width={1024} />
     </div>
 
     {#if !isMobile}
@@ -162,12 +160,6 @@
     flex-direction: column;
     overflow: hidden;
     background: #000;
-  }
-
-  .freq-scale {
-    height: 24px;
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border-color);
   }
 
   .controls-sidebar {
