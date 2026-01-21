@@ -59,7 +59,7 @@
   async function handleConnect() {
     try {
       await audioEngine.start();
-      websdrClient.connect($currentServer.url);
+      websdrClient.connect($currentServer);
       websdrClient.connectWaterfall(0, 1024, 0, 0);
 
       // Send initial settings

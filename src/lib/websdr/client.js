@@ -5,11 +5,14 @@ import {
   formatMuteCommand
 } from './protocol.js';
 
+// Check if we're in development mode (Vite dev server)
+const isDev = import.meta.env.DEV;
+
 export class WebSDRClient {
   constructor() {
     this.audioSocket = null;
     this.waterfallSocket = null;
-    this.serverUrl = null;
+    this.server = null;
     this.onAudioData = null;
     this.onWaterfallData = null;
     this.onSmeterUpdate = null;
@@ -17,15 +20,34 @@ export class WebSDRClient {
     this.onError = null;
   }
 
-  connect(serverUrl) {
-    this.serverUrl = serverUrl;
-    this.disconnect();
+  // Build WebSocket URL - use proxy in dev mode to avoid CORS issues
+  _buildWsUrl(path) {
+    if (isDev && this.server.proxyPath) {
+      // In dev mode, use Vite proxy path
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${wsProtocol}//${window.location.host}${this.server.proxyPath}${path}`;
+    } else {
+      // In production, connect directly (requires same-origin hosting or CORS proxy)
+      return `ws://${this.server.url}${path}`;
+    }
+  }
 
+  connect(server) {
+    // Accept either a server object or URL string for backwards compatibility
+    if (typeof server === 'string') {
+      this.server = { url: server, proxyPath: null };
+    } else {
+      this.server = server;
+    }
+
+    this.disconnect();
     this._notifyStatus('connecting');
 
     // Connect audio WebSocket
     try {
-      this.audioSocket = new WebSocket(`ws://${serverUrl}/~~stream?v=11`);
+      const wsUrl = this._buildWsUrl('/~~stream?v=11');
+      console.log('Connecting to:', wsUrl);
+      this.audioSocket = new WebSocket(wsUrl);
       this.audioSocket.binaryType = 'arraybuffer';
 
       this.audioSocket.onopen = () => {
@@ -49,15 +71,17 @@ export class WebSDRClient {
   }
 
   connectWaterfall(band = 0, width = 1024, zoom = 0, start = 0) {
-    if (!this.serverUrl) return;
+    if (!this.server) return;
 
     if (this.waterfallSocket) {
       this.waterfallSocket.close();
     }
 
     try {
-      const url = `ws://${this.serverUrl}/~~waterstream${band}?format=9&width=${width}&zoom=${zoom}&start=${start}`;
-      this.waterfallSocket = new WebSocket(url);
+      const path = `/~~waterstream${band}?format=9&width=${width}&zoom=${zoom}&start=${start}`;
+      const wsUrl = this._buildWsUrl(path);
+      console.log('Connecting waterfall to:', wsUrl);
+      this.waterfallSocket = new WebSocket(wsUrl);
       this.waterfallSocket.binaryType = 'arraybuffer';
 
       this.waterfallSocket.onmessage = (event) => {
