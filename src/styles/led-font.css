@@ -1,0 +1,7 @@
+/* Using CSS for 7-segment style - fallback if no font loaded */
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+.led-display {
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  letter-spacing: 0.05em;
+}
