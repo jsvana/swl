@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"npm run proxy\" \"vite\"",
+    "dev:vite": "vite",
+    "proxy": "node proxy-server.js",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -11,5 +13,9 @@
     "@sveltejs/vite-plugin-svelte": "^3.1.2",
     "svelte": "^4.2.20",
     "vite": "^5.4.21"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "http-proxy": "^1.18.1"
   }
 }

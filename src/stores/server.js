@@ -1,12 +1,13 @@
 import { writable, derived } from 'svelte/store';
 
-// Preset servers with proxy paths for dev mode
+// Preset servers with proxy IDs for dev mode
+// proxyId must match the keys in proxy-server.js
 export const presetServers = [
   {
     id: 'utah-sdr2',
     name: 'Utah SDR #2 (30-6m Omni)',
     url: 'websdr2.sdrutah.org:8902',
-    proxyPath: '/websdr/utah2',
+    proxyId: 'utah2',
     location: { lat: 41.55, lon: -112.08 },
     bands: ['30m', '20m', '17m', '15m', '12m', '10m', '6m']
   },
@@ -14,7 +15,7 @@ export const presetServers = [
     id: 'utah-sdr1',
     name: 'Utah SDR #1 (160-40m)',
     url: 'websdr1.sdrutah.org:8901',
-    proxyPath: '/websdr/utah1',
+    proxyId: 'utah1',
     location: { lat: 41.55, lon: -112.08 },
     bands: ['160m', '80m', '60m', '40m']
   },
@@ -22,7 +23,7 @@ export const presetServers = [
     id: 'k3fef',
     name: 'K3FEF Milford, PA',
     url: 'k3fef.com:8901',
-    proxyPath: '/websdr/k3fef',
+    proxyId: 'k3fef',
     location: { lat: 41.32, lon: -74.80 },
     bands: ['160m', '80m', '40m', '20m']
   },
@@ -30,7 +31,7 @@ export const presetServers = [
     id: 'kfs',
     name: 'KFS Half Moon Bay, CA',
     url: 'kfsdr.com:8901',
-    proxyPath: '/websdr/kfs',
+    proxyId: 'kfs',
     location: { lat: 37.5, lon: -122.5 },
     bands: ['Various']
   }

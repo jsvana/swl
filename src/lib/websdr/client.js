@@ -8,6 +8,9 @@ import {
 // Check if we're in development mode (Vite dev server)
 const isDev = import.meta.env.DEV;
 
+// Standalone proxy server port (run proxy-server.js alongside dev server)
+const PROXY_PORT = 8080;
+
 export class WebSDRClient {
   constructor() {
     this.audioSocket = null;
@@ -22,10 +25,10 @@ export class WebSDRClient {
 
   // Build WebSocket URL - use proxy in dev mode to avoid CORS issues
   _buildWsUrl(path) {
-    if (isDev && this.server.proxyPath) {
-      // In dev mode, use Vite proxy path
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${wsProtocol}//${window.location.host}${this.server.proxyPath}${path}`;
+    if (isDev && this.server.proxyId) {
+      // In dev mode, use standalone proxy server on port 8080
+      // URL format: ws://localhost:8080/{proxyId}/path
+      return `ws://localhost:${PROXY_PORT}/${this.server.proxyId}${path}`;
     } else {
       // In production, connect directly (requires same-origin hosting or CORS proxy)
       return `ws://${this.server.url}${path}`;
