@@ -5,104 +5,122 @@
  *
  * Usage: node proxy-server.js
  *
- * The proxy listens on port 8080 and forwards to WebSDR servers.
+ * The proxy listens on port 8080 and forwards WebSocket connections to WebSDR servers.
  */
 
+import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
-import httpProxy from 'http-proxy';
+import { URL } from 'url';
 
 const PROXY_PORT = 8080;
 
 // Server mappings
 const servers = {
-  'utah2': 'http://websdr2.sdrutah.org:8902',
-  'utah1': 'http://websdr1.sdrutah.org:8901',
-  'k3fef': 'http://k3fef.com:8901',
-  'kfs': 'http://kfsdr.com:8901',
+  'utah2': { host: 'websdr2.sdrutah.org', port: 8902 },
+  'utah1': { host: 'websdr1.sdrutah.org', port: 8901 },
+  'k3fef': { host: 'k3fef.com', port: 8901 },
+  'kfs': { host: 'kfsdr.com', port: 8901 },
 };
 
-// Create proxy
-const proxy = httpProxy.createProxyServer({});
-
-// Handle proxy errors
-proxy.on('error', (err, req, res) => {
-  console.error('Proxy error:', err.message);
-  if (res.writeHead) {
-    res.writeHead(502, { 'Content-Type': 'text/plain' });
-    res.end('Proxy error');
-  }
-});
-
-// Set headers for proxied requests
-proxy.on('proxyReq', (proxyReq, req, res, options) => {
-  const target = options.target.href;
-  const url = new URL(target);
-  proxyReq.setHeader('Origin', target.replace(/\/$/, ''));
-  proxyReq.setHeader('Host', url.host);
-  console.log(`HTTP: ${req.method} ${req.url} -> ${target}`);
-});
-
-// Set headers for WebSocket upgrades
-proxy.on('proxyReqWs', (proxyReq, req, socket, options, head) => {
-  const target = options.target.href;
-  const url = new URL(target);
-  proxyReq.setHeader('Origin', target.replace(/\/$/, ''));
-  proxyReq.setHeader('Host', url.host);
-  console.log(`WS: ${req.url} -> ${target}`);
-});
-
 // Create HTTP server
-const server = http.createServer((req, res) => {
-  // Extract server ID from path: /utah2/~~stream -> utah2
+const httpServer = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('WebSDR Proxy Server\n\nConnect via WebSocket to /{server-id}/path\n\nAvailable servers: ' + Object.keys(servers).join(', '));
+});
+
+// Create WebSocket server
+const wss = new WebSocketServer({ server: httpServer });
+
+wss.on('connection', (clientWs, req) => {
+  // Parse URL to extract server ID and path
+  // Format: /utah2/~~stream?v=11
   const match = req.url.match(/^\/([^/]+)(\/.*)/);
   if (!match) {
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end('Invalid path. Use /{server-id}/path');
+    console.error('Invalid URL format:', req.url);
+    clientWs.close(1008, 'Invalid URL format');
     return;
   }
 
   const [, serverId, path] = match;
-  const target = servers[serverId];
+  const serverConfig = servers[serverId];
 
-  if (!target) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end(`Unknown server: ${serverId}. Available: ${Object.keys(servers).join(', ')}`);
+  if (!serverConfig) {
+    console.error('Unknown server:', serverId);
+    clientWs.close(1008, `Unknown server: ${serverId}`);
     return;
   }
 
-  // Rewrite URL to remove server prefix
-  req.url = path;
+  const { host, port } = serverConfig;
+  const targetUrl = `ws://${host}:${port}${path}`;
+  const origin = `http://${host}:${port}`;
 
-  proxy.web(req, res, { target });
+  console.log(`[${serverId}] Connecting to ${targetUrl}`);
+
+  // Connect to the target WebSDR server with proper headers
+  const targetWs = new WebSocket(targetUrl, {
+    headers: {
+      'Origin': origin,
+      'Host': `${host}:${port}`,
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+    },
+  });
+
+  targetWs.on('open', () => {
+    console.log(`[${serverId}] Connected to WebSDR`);
+  });
+
+  // Forward messages from WebSDR to client
+  targetWs.on('message', (data, isBinary) => {
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(data, { binary: isBinary });
+    }
+  });
+
+  // Forward messages from client to WebSDR
+  clientWs.on('message', (data, isBinary) => {
+    if (targetWs.readyState === WebSocket.OPEN) {
+      targetWs.send(data, { binary: isBinary });
+    }
+  });
+
+  // Handle target WebSocket errors
+  targetWs.on('error', (err) => {
+    console.error(`[${serverId}] Target error:`, err.message);
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.close(1011, 'Target connection error');
+    }
+  });
+
+  // Handle client WebSocket errors
+  clientWs.on('error', (err) => {
+    console.error(`[${serverId}] Client error:`, err.message);
+    if (targetWs.readyState === WebSocket.OPEN) {
+      targetWs.close();
+    }
+  });
+
+  // Handle target close
+  targetWs.on('close', (code, reason) => {
+    console.log(`[${serverId}] Target closed: ${code} ${reason}`);
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.close(code, reason);
+    }
+  });
+
+  // Handle client close
+  clientWs.on('close', (code, reason) => {
+    console.log(`[${serverId}] Client disconnected: ${code}`);
+    if (targetWs.readyState === WebSocket.OPEN) {
+      targetWs.close();
+    }
+  });
 });
 
-// Handle WebSocket upgrades
-server.on('upgrade', (req, socket, head) => {
-  const match = req.url.match(/^\/([^/]+)(\/.*)/);
-  if (!match) {
-    socket.destroy();
-    return;
-  }
-
-  const [, serverId, path] = match;
-  const target = servers[serverId];
-
-  if (!target) {
-    socket.destroy();
-    return;
-  }
-
-  // Rewrite URL to remove server prefix
-  req.url = path;
-
-  proxy.ws(req, socket, head, { target });
-});
-
-server.listen(PROXY_PORT, () => {
+httpServer.listen(PROXY_PORT, () => {
   console.log(`WebSDR proxy server running on http://localhost:${PROXY_PORT}`);
   console.log('Available servers:');
-  for (const [id, url] of Object.entries(servers)) {
-    console.log(`  /${id}/* -> ${url}`);
+  for (const [id, config] of Object.entries(servers)) {
+    console.log(`  /${id}/* -> ws://${config.host}:${config.port}`);
   }
-  console.log('\nExample WebSocket URL: ws://localhost:8080/utah2/~~stream?v=11');
+  console.log('\nExample: ws://localhost:8080/utah2/~~stream?v=11');
 });
