@@ -44,8 +44,10 @@
       }
     };
 
-    websdrClient.onSmeterUpdate = (value) => {
-      smeter.set(value);
+    // S-meter comes from audio decoder now
+    audioEngine.decoder.onSmeter = (value) => {
+      // Value is in dB above noise floor, convert to dBm estimate
+      smeter.set(-140 + value);
     };
   });
 

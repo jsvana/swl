@@ -137,31 +137,10 @@ export class WebSDRClient {
   }
 
   _handleAudioMessage(data) {
-    const bytes = new Uint8Array(data);
-
-    // WebSDR audio protocol:
-    // - Bytes 0xF0-0xFF: S-meter (next byte is low part of value)
-    // - Byte 0x80: Raw u-law block follows (128 bytes)
-    // - Other bytes: Compressed audio data
-    // For now, just pass all data as audio and extract S-meter when found
-
-    // Look for S-meter at start of message (common location)
-    let offset = 0;
-    if (bytes.length >= 2 && (bytes[0] & 0xF0) === 0xF0) {
-      const smeterValue = ((bytes[0] & 0x0F) << 8) | bytes[1];
-      if (this.onSmeterUpdate) {
-        // Convert to dBm (raw value * 0.1)
-        const dbm = -140 + (smeterValue / 10);
-        this.onSmeterUpdate(dbm);
-      }
-      offset = 2;
-    }
-
-    // Pass remaining data as audio
-    // Note: WebSDR uses compression, so this won't sound right without decompression
-    // For now, pass it through and let the audio engine try to play it
-    if (this.onAudioData && offset < bytes.length) {
-      this.onAudioData(bytes.subarray(offset));
+    // Pass raw message to audio engine - it handles protocol decoding internally
+    // including S-meter extraction, sample rate, and audio decompression
+    if (this.onAudioData) {
+      this.onAudioData(new Uint8Array(data));
     }
   }
 
