@@ -81,7 +81,8 @@ export class WebSDRClient {
     }
 
     try {
-      const path = `/~~waterstream${band}?format=9&width=${width}&zoom=${zoom}&start=${start}`;
+      // format=0 gives uncompressed data (1 byte per pixel)
+      const path = `/~~waterstream${band}?format=0&width=${width}&zoom=${zoom}&start=${start}`;
       const wsUrl = this._buildWsUrl(path);
       console.log('Connecting waterfall to:', wsUrl);
       this.waterfallSocket = new WebSocket(wsUrl);
@@ -138,53 +139,39 @@ export class WebSDRClient {
   _handleAudioMessage(data) {
     const bytes = new Uint8Array(data);
 
-    // Parse message - look for control bytes
-    let audioStart = 0;
-    let smeterValue = null;
+    // WebSDR audio protocol:
+    // - Bytes 0xF0-0xFF: S-meter (next byte is low part of value)
+    // - Byte 0x80: Raw u-law block follows (128 bytes)
+    // - Other bytes: Compressed audio data
+    // For now, just pass all data as audio and extract S-meter when found
 
-    for (let i = 0; i < bytes.length; i++) {
-      // S-meter: 0xF0 prefix
-      if ((bytes[i] & 0xF0) === 0xF0 && i + 1 < bytes.length) {
-        smeterValue = ((bytes[i] & 0x0F) << 8) | bytes[i + 1];
-        i++; // Skip next byte
-        audioStart = i + 1;
+    // Look for S-meter at start of message (common location)
+    let offset = 0;
+    if (bytes.length >= 2 && (bytes[0] & 0xF0) === 0xF0) {
+      const smeterValue = ((bytes[0] & 0x0F) << 8) | bytes[1];
+      if (this.onSmeterUpdate) {
+        // Convert to dBm (raw value * 0.1)
+        const dbm = -140 + (smeterValue / 10);
+        this.onSmeterUpdate(dbm);
       }
-      // Sample rate: 0x81
-      else if (bytes[i] === 0x81 && i + 2 < bytes.length) {
-        const sampleRate = (bytes[i + 1] << 8) | bytes[i + 2];
-        i += 2;
-        audioStart = i + 1;
-      }
+      offset = 2;
     }
 
-    if (smeterValue !== null && this.onSmeterUpdate) {
-      // Convert to dBm (rough approximation)
-      const dbm = -140 + (smeterValue / 10);
-      this.onSmeterUpdate(dbm);
-    }
-
-    if (this.onAudioData && audioStart < bytes.length) {
-      this.onAudioData(bytes.subarray(audioStart));
+    // Pass remaining data as audio
+    // Note: WebSDR uses compression, so this won't sound right without decompression
+    // For now, pass it through and let the audio engine try to play it
+    if (this.onAudioData && offset < bytes.length) {
+      this.onAudioData(bytes.subarray(offset));
     }
   }
 
   _handleWaterfallMessage(data) {
     const bytes = new Uint8Array(data);
 
-    // Check for control message (255, 255 prefix)
-    if (bytes[0] === 255 && bytes[1] !== 255) {
-      // Control message, skip
-      return;
-    }
-
-    // Skip any control prefix
-    let dataStart = 0;
-    if (bytes[0] === 255 && bytes[1] === 255) {
-      dataStart = 2;
-    }
-
-    if (this.onWaterfallData) {
-      this.onWaterfallData(bytes.subarray(dataStart));
+    // With format=0, we get raw FFT data (1 byte per pixel)
+    // Values are typically 0-255 representing signal strength
+    if (this.onWaterfallData && bytes.length > 0) {
+      this.onWaterfallData(bytes);
     }
   }
 
