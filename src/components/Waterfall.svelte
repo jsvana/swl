@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { frequency, filterLow, filterHigh } from '../stores/radio.js';
+  import { websdrClient } from '../lib/websdr/client.js';
 
   export let width = 1024;
   export let height = 200;
@@ -69,8 +70,24 @@
   function handleClick(event) {
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
-    const newFreq = xToFreq(x);
-    frequency.set(Math.round(newFreq * 10) / 10);
+    const newFreq = Math.round(xToFreq(x) * 10) / 10;
+    frequency.set(newFreq);
+    websdrClient.tune(newFreq);
+  }
+
+  // Handle wheel to step frequency
+  function handleWheel(event) {
+    event.preventDefault();
+    // Scroll up = higher frequency, scroll down = lower frequency
+    // Use 0.1 kHz steps for fine tuning (shift for 1 kHz steps)
+    const stepSize = event.shiftKey ? 1 : 0.1;
+    const delta = event.deltaY > 0 ? -stepSize : stepSize;
+    // Update frequency and send to server
+    frequency.update(f => {
+      const newFreq = Math.round((f + delta) * 100) / 100;
+      websdrClient.tune(newFreq);
+      return newFreq;
+    });
   }
 
   // Draw filter overlay
@@ -87,6 +104,7 @@
     {width}
     {height}
     on:click={handleClick}
+    on:wheel={handleWheel}
   />
 
   <!-- Filter overlay -->

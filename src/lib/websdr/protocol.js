@@ -1,11 +1,56 @@
 // Format commands for WebSDR server
+// Based on PA3FWM's WebSDR protocol - all parameters must be sent together
 
+// Mode mapping: WebSDR uses numeric mode values
+const MODE_MAP = {
+  'usb': 0,
+  'lsb': 0,
+  'cw': 0,
+  'am': 1,
+  'fm': 4
+};
+
+// Tuning step in kHz per band (from bandinfo.js)
+const TUNING_STEPS = {
+  0: 0.03125,  // 30m
+  1: 0.03125,  // 20m
+  2: 0.03125,  // 17m
+  3: 0.03125,  // 15m
+  4: 0.03125,  // 12m
+  5: 0.03125,  // 10m
+  6: 0.03125,  // 10m (cont)
+  7: 0.03125,  // 6m
+};
+
+// Format a complete settings command with all parameters
+// WebSDR expects all settings in a single command
+export function formatSettingsCommand({ freq, band = 0, lo, hi, mode, name = '' }) {
+  const modeNum = typeof mode === 'string' ? (MODE_MAP[mode.toLowerCase()] ?? 0) : mode;
+
+  // Round frequency to tuning step (server may require this)
+  const step = TUNING_STEPS[band] || 0.03125;
+  const roundedFreq = Math.round(freq / step) * step;
+
+  const params = [
+    `f=${roundedFreq}`,
+    `band=${band}`,
+    `lo=${lo}`,
+    `hi=${hi}`,
+    `mode=${modeNum}`,
+    `name=${encodeURIComponent(name)}`
+  ];
+  return `GET /~~param?${params.join('&')}`;
+}
+
+// Legacy functions for backwards compatibility - but prefer formatSettingsCommand
 export function formatTuneCommand(freqKhz) {
-  return `GET /~~param?freq=${freqKhz}`;
+  // Note: This may not work alone - server expects all params together
+  return `GET /~~param?f=${freqKhz}`;
 }
 
 export function formatModeCommand(mode) {
-  return `GET /~~param?mode=${mode}`;
+  const modeNum = MODE_MAP[mode.toLowerCase()] ?? 0;
+  return `GET /~~param?mode=${modeNum}`;
 }
 
 export function formatFilterCommand(lo, hi) {

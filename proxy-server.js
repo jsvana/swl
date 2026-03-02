@@ -56,6 +56,10 @@ wss.on('connection', (clientWs, req) => {
 
   console.log(`[${serverId}] Connecting to ${targetUrl}`);
 
+  // Buffer for messages received before upstream connection is ready
+  let pendingMessages = [];
+  let upstreamReady = false;
+
   // Connect to the target WebSDR server with proper headers
   const targetWs = new WebSocket(targetUrl, {
     headers: {
@@ -67,6 +71,16 @@ wss.on('connection', (clientWs, req) => {
 
   targetWs.on('open', () => {
     console.log(`[${serverId}] Connected to WebSDR`);
+    upstreamReady = true;
+
+    // Send any buffered messages
+    if (pendingMessages.length > 0) {
+      console.log(`[${serverId}] Sending ${pendingMessages.length} buffered messages`);
+      for (const { data, isBinary } of pendingMessages) {
+        targetWs.send(data, { binary: isBinary });
+      }
+      pendingMessages = [];
+    }
   });
 
   // Forward messages from WebSDR to client
@@ -78,8 +92,20 @@ wss.on('connection', (clientWs, req) => {
 
   // Forward messages from client to WebSDR
   clientWs.on('message', (data, isBinary) => {
-    if (targetWs.readyState === WebSocket.OPEN) {
+    // Log all client messages for debugging
+    const text = data.toString();
+    if (text.startsWith('GET ')) {
+      console.log(`[${serverId}] Client -> Server: ${text}`);
+    } else {
+      console.log(`[${serverId}] Client -> Server: [${isBinary ? 'binary' : 'text'}] ${data.length} bytes`);
+    }
+
+    if (upstreamReady && targetWs.readyState === WebSocket.OPEN) {
       targetWs.send(data, { binary: isBinary });
+    } else {
+      // Buffer messages until upstream is ready
+      console.log(`[${serverId}] Buffering message (upstream not ready)`);
+      pendingMessages.push({ data, isBinary });
     }
   });
 

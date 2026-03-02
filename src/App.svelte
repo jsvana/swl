@@ -61,15 +61,20 @@
   async function handleConnect() {
     try {
       await audioEngine.start();
-      websdrClient.connect($currentServer);
-      websdrClient.connectWaterfall(0, 1024, 0, 0);
 
-      // Send initial settings
-      setTimeout(() => {
-        websdrClient.tune($frequency);
-        websdrClient.setMode($mode);
-        websdrClient.setFilter($filterLow, $filterHigh);
-      }, 500);
+      // Set up callback for when socket is ready
+      websdrClient.onReady = () => {
+        // Wait 100ms before sending initial settings (like original WebSDR)
+        setTimeout(() => {
+          console.log('Sending initial settings...');
+          websdrClient.tune($frequency);
+          websdrClient.setMode($mode);
+          websdrClient.setFilter($filterLow, $filterHigh);
+        }, 100);
+      };
+
+      websdrClient.connect($currentServer);
+      websdrClient.connectWaterfall(1, 1024, 0, 0);  // Band 1 = 20m on Utah SDR
     } catch (e) {
       console.error('Failed to connect:', e);
     }
